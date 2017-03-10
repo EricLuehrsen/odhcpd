@@ -281,6 +281,10 @@ struct interface {
 	uint32_t dhcpv4_leasetime;
 	bool dhcpv4_forcereconf;
 
+	// DHCPv6
+	uint32_t dhcpv6_hashtime;
+	uint32_t dhcpv6_hashhist[2];
+
 	// DNS
 	struct in6_addr *dns;
 	size_t dns_cnt;

@@ -655,12 +655,55 @@ static bool assign_na(struct interface *iface, struct dhcp_assignment *a)
 	/* Seed RNG with checksum of DUID */
 	for (size_t i = 0; i < a->clid_len; ++i)
 		seed += a->clid_data[i];
+
+static uint32_t scatter_na_seed(void) {
+	uint32_t seed = 0;
+	time_t time_i, time_o;
+	double deltat;
+
+	syslog(LOG_INFO, "We should be here more often time %u on %s",
+			iface->dhcpv6_hashtime, iface->ifname);
+
+	if (iface->dhcpv6_hashtime > 0) {
+		/* Make DHCPv6 a little less predictable */
+		time_i = time(NULL);
+		time_o = (time_t)(iface->dhcpv6_hashhist[0]);
+		deltat = difftime(time_i, time_o);
+		syslog(LOG_INFO, "Is %ld to %ld difference %g greater than %u on %s?",
+			time_o, time_i, deltat, iface->dhcpv6_hashtime, iface->ifname);
+
+		if (deltat > iface->dhcpv6_hashtime) {
+			srand((uint32_t)time_i);
+			iface->dhcpv6_hashhist[0] = (uint32_t)time_i;
+			iface->dhcpv6_hashhist[1] = (uint32_t)rand();
+			syslog(LOG_INFO, "Updated DHCPv6 pool time from %ld to %ld on %s",
+				time_o, time_i, iface->ifname);
+		}
+
+		seed = iface->dhcpv6_hashhist[1];
+	}
+
+	return seed;
+}
+
+static bool assign_na(struct interface *iface, struct dhcpv6_assignment *assign)
+{
+	uint32_t seed = 0;
+
+	for (size_t i = 0; i < assign->clid_len; ++i) {
+		/* Seed RNG with simple sum of DUID */
+		seed += assign->clid_data[i];
+	}
+
+	seed += scatter_na_seed();
 	srand(seed);
 
 	/* Try to assign up to 100x */
 	for (size_t i = 0; i < 100; ++i) {
 		uint32_t try;
-		do try = ((uint32_t)rand()) % 0x0fff; while (try < 0x100);
+
+		do try = ((uint32_t)rand()) % 0xffff; 
+		while (try < 0x1000);
 
 		if (config_find_lease_by_hostid(try))
 			continue;
@@ -1433,3 +1476,4 @@ ssize_t dhcpv6_ia_handle_IAs(uint8_t *buf, size_t buflen, struct interface *ifac
 out:
 	return response_len;
 }
+
